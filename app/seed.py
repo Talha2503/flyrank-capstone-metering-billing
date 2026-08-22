@@ -31,6 +31,35 @@ def seed_plans():
     finally:
         db.close()
 
+def seed_test_tenant():
+    db = SessionLocal()
+    try:
+        existing = db.query(models.Tenant).filter_by(name="Test Tenant").first()
+        if existing:
+            print(f"Test tenant already exists: {existing.id}")
+            return existing
+
+        free_plan = db.query(models.Plan).filter_by(name="Free").first()
+
+        tenant = models.Tenant(name="Test Tenant")
+        db.add(tenant)
+        db.flush()  # get tenant.id before commit
+
+        subscription = models.Subscription(
+            tenant_id=tenant.id,
+            plan_id=free_plan.id,
+            status="active",
+        )
+        db.add(subscription)
+        db.commit()
+        db.refresh(tenant)
+
+        print(f"Test tenant created: {tenant.id}")
+        return tenant
+    finally:
+        db.close()
+
 if __name__ == "__main__":
     init_db()
     seed_plans()
+    seed_test_tenant()
