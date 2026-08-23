@@ -52,14 +52,29 @@ def generate(
 
     return GenerateResponse(usage_event_id=event.id, status="recorded")
 
+
 @router.get("/usage")
 def get_usage(tenant_id: str, db: Session = Depends(get_db)):
     from uuid import UUID
+    from app.services.cost_service import CostService
+
     quota_service = QuotaService(db)
+    cost_service = CostService(db)
 
     tenant_uuid = UUID(tenant_id)
     plan = quota_service.get_tenant_plan(tenant_uuid)
     totals = quota_service.get_usage_totals(tenant_uuid)
+
+    period_start = quota_service._current_period_start()
+    events_this_period = (
+        db.query(models.UsageEvent)
+        .filter(
+            models.UsageEvent.tenant_id == tenant_uuid,
+            models.UsageEvent.created_at >= period_start,
+        )
+        .all()
+    )
+    cost_cents = cost_service.calculate_total_cost_cents(events_this_period)
 
     return {
         "used": totals,
@@ -67,4 +82,5 @@ def get_usage(tenant_id: str, db: Session = Depends(get_db)):
             "api_call": plan.api_call_limit,
             "ai_tokens": plan.ai_token_limit,
         },
+        "cost_cents": cost_cents,
     }
