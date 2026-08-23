@@ -137,6 +137,63 @@ Business logic never talks to the DB or Stripe directly — services depend on r
 
 ---
 
+
+---
+
+## Architecture Diagram
+
+[#architecture-diagram](#architecture-diagram)
+
+```
+                          ┌─────────────────────────┐
+                          │        Client            │
+                          └────────────┬─────────────┘
+                                       │
+                    ┌──────────────────┼───────────────────┐
+                    │                  │                   │
+                    ▼                  ▼                   ▼
+            POST /generate      GET /usage          POST /checkout
+                    │                  │                   │
+                    ▼                  ▼                   ▼
+        ┌──────────────────────────────────────────────────────┐
+        │                    HTTP Layer (FastAPI)                │
+        │        request validation · status codes · routing     │
+        └──────────────────────────┬───────────────────────────┘
+                                    │
+        ┌───────────────────────────┼────────────────────────────┐
+        │                           │                            │
+        ▼                           ▼                            ▼
+┌───────────────┐          ┌────────────────┐          ┌─────────────────┐
+│  MeterService   │          │  QuotaService   │          │   CostService     │
+│ idempotent      │          │ 429 / 402       │          │ token pricing,    │
+│ usage recording │          │ boundary rules  │          │ integer-cent math │
+└───────┬─────────┘          └────────┬────────┘          └─────────┬─────────┘
+        │                             │                             │
+        └─────────────────────────────┼─────────────────────────────┘
+                                       ▼
+                        ┌───────────────────────────┐
+                        │      Data Layer (ORM)       │
+                        │  tenants · plans ·           │
+                        │  subscriptions · usage_events │
+                        └──────────────┬────────────────┘
+                                       │
+                                       ▼
+                              ┌─────────────────┐
+                              │   PostgreSQL      │
+                              └─────────────────┘
+
+        ┌──────────────────────────────────────────────────────┐
+        │                  Stripe (test mode)                    │
+        └──────────────────────────┬───────────────────────────┘
+                                    │ signed webhook
+                                    ▼
+                        POST /webhooks/stripe
+                                    │
+                     verify signature → 400 if forged
+                     dedup by stripe_event_id
+                     update tenant plan/status
+```
+
 ## 7. Non-Goal
 
 This system does **not** implement proration, invoicing, or overage billing in the core build. A customer who reaches their quota is blocked (`429`/`402`) rather than allowed to overage-bill. These are explicitly out of scope and listed only as stretch goals.
